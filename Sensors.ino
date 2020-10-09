@@ -8,6 +8,8 @@
 #include <avr/wdt.h>
 
 uint32_t timer = millis();
+uint32_t reley_timer = millis();
+uint32_t reley_send_state_timer = millis();
 
 volatile unsigned int flow_1_frequency; // Measures flow sensor pulses
 volatile unsigned int flow_2_frequency; // Measures flow sensor pulses
@@ -30,6 +32,15 @@ double L_minute_4 = -999999; // Calculated litres/hour
 #define TEMP_6_PIN 28
 #define TEMP_7_PIN 26
 
+#define RELEY_1_PIN 46
+#define RELEY_2_PIN 47
+#define RELEY_3_PIN 48
+#define RELEY_4_PIN 49
+
+byte RELEY_1 = 0;
+byte RELEY_2 = 0;
+byte RELEY_3 = 0;
+byte RELEY_4 = 0;
 
 OneWire temp_1_wire(TEMP_1_PIN);
 OneWire temp_2_wire(TEMP_2_PIN);
@@ -60,8 +71,10 @@ IPAddress LocalIPAddress(192, 168, 3, 10);
 unsigned int LocalPort = 6000;
 IPAddress DestinationAddress(255, 255, 255, 255);
 unsigned int DestinationPort = 6000;
-char IncomingBuffer[UDP_TX_PACKET_MAX_SIZE];
+char packetBuffer[UDP_TX_PACKET_MAX_SIZE];
 EthernetUDP Udp;
+
+unsigned int cycle=0;
 
 void flow_1() // Interrupt function
 {
@@ -81,6 +94,15 @@ void flow_4() // Interrupt function
 }
 
 void setup() {
+  pinMode(RELEY_1_PIN, OUTPUT);
+  pinMode(RELEY_2_PIN, OUTPUT);
+  pinMode(RELEY_3_PIN, OUTPUT);
+  pinMode(RELEY_4_PIN, OUTPUT);
+  digitalWrite(RELEY_1_PIN, HIGH);
+  digitalWrite(RELEY_2_PIN, HIGH);
+  digitalWrite(RELEY_3_PIN, HIGH);
+  digitalWrite(RELEY_4_PIN, HIGH);
+
   Ethernet.begin(MacAddress, LocalIPAddress);
   Udp.begin(LocalPort);
   delay(10);
@@ -129,9 +151,145 @@ void setup() {
 }
 
 void loop() {
-    if (timer > millis()) timer = millis(); // if millis() or timer wraps around, we'll just reset it
-    if (millis() - timer >= 2000) {  // approximately every 2 seconds or so, print out the current stats
+
+  int packetSize = Udp.parsePacket();
+  
+  if (packetSize > 0) {
+    Udp.read(packetBuffer, sizeof(packetBuffer));
+    if (String(packetBuffer) == "COMMAND_RELEY_1_ON") {
+      RELEY_1 = 1;
+      digitalWrite(RELEY_1_PIN, LOW);
+      reley_timer = millis();
+    }
+    if (String(packetBuffer) == "COMMAND_RELEY_1_OFF") {
+      RELEY_1 = 0;
+      digitalWrite(RELEY_1_PIN, HIGH);
+      reley_timer = millis();
+    }
+    if (String(packetBuffer) == "COMMAND_RELEY_2_ON") {
+      RELEY_2 = 1;
+      digitalWrite(RELEY_2_PIN, LOW);
+      reley_timer = millis();
+    }
+    if (String(packetBuffer) == "COMMAND_RELEY_2_OFF") {
+      RELEY_2 = 0;
+      digitalWrite(RELEY_2_PIN, HIGH);
+      reley_timer = millis();
+    }
+    if (String(packetBuffer) == "COMMAND_RELEY_3_ON") {
+      RELEY_3 = 1;
+      digitalWrite(RELEY_3_PIN, LOW);
+      reley_timer = millis();
+    }
+    if (String(packetBuffer) == "COMMAND_RELEY_3_OFF") {
+      RELEY_3 = 0;
+      digitalWrite(RELEY_3_PIN, HIGH);
+      reley_timer = millis();
+    }
+    if (String(packetBuffer) == "COMMAND_RELEY_4_ON") {
+      RELEY_4 = 1;
+      digitalWrite(RELEY_4_PIN, LOW);
+      reley_timer = millis();
+    }
+    if (String(packetBuffer) == "COMMAND_RELEY_4_OFF") {
+      RELEY_4 = 0;
+      digitalWrite(RELEY_4_PIN, HIGH);
+      reley_timer = millis();
+    }
+    for (int g = 0; g < UDP_TX_PACKET_MAX_SIZE; g++) { packetBuffer[g]='\0'; } // очищаем приёмный массив от старых данных
+  }
+
+  if (reley_timer > millis()) reley_timer = millis();
+  if (millis() - reley_timer >= 20000000) {
+    RELEY_1 = 0;
+    RELEY_2 = 0;
+    RELEY_3 = 0;
+    RELEY_4 = 0;
+    digitalWrite(RELEY_1_PIN, HIGH);
+    digitalWrite(RELEY_2_PIN, HIGH);
+    digitalWrite(RELEY_3_PIN, HIGH);
+    digitalWrite(RELEY_4_PIN, HIGH);
+  }
+
+  if (reley_send_state_timer > millis()) reley_send_state_timer = millis();
+  if (millis() - reley_send_state_timer >= 450) {
+    reley_send_state_timer = millis();
+    Udp.beginPacket(DestinationAddress, DestinationPort);
+    Udp.print("RELEY_1=");
+    Udp.println(RELEY_1);
+    Udp.endPacket();
+    Udp.beginPacket(DestinationAddress, DestinationPort);
+    Udp.print("RELEY_2=");
+    Udp.println(RELEY_2);
+    Udp.endPacket();
+    Udp.beginPacket(DestinationAddress, DestinationPort);
+    Udp.print("RELEY_3=");
+    Udp.println(RELEY_3);
+    Udp.endPacket();
+    Udp.beginPacket(DestinationAddress, DestinationPort);
+    Udp.print("RELEY_4=");
+    Udp.println(RELEY_4);
+    Udp.endPacket();
+    Serial.print("RELEY_1=");
+    Serial.println(RELEY_1);
+    Serial.print("RELEY_2=");
+    Serial.println(RELEY_2);
+    Serial.print("RELEY_3=");
+    Serial.println(RELEY_3);
+    Serial.print("RELEY_4=");
+    Serial.println(RELEY_4);
+  }
+
+  
+  
+  if (timer > millis()) timer = millis(); // if millis() or timer wraps around, we'll just reset it
+  if (millis() - timer >= 1000) {  // approximately every 2 seconds or so, print out the current stats
     timer = millis(); // reset the timer
+    //if (RELEY_1 == 1) { digitalWrite(RELEY_1_PIN, HIGH); } else { digitalWrite(RELEY_1_PIN, LOW); }
+    //if (RELEY_2 == 1) { digitalWrite(RELEY_2_PIN, HIGH); } else { digitalWrite(RELEY_2_PIN, LOW); }
+    //if (RELEY_3 == 1) { digitalWrite(RELEY_3_PIN, HIGH); } else { digitalWrite(RELEY_3_PIN, LOW); }
+    //if (RELEY_4 == 1) { digitalWrite(RELEY_4_PIN, HIGH); } else { digitalWrite(RELEY_4_PIN, LOW); }
+    
+    
+    
+
+
+    cycle++;
+
+    if (cycle == 2) {
+      digitalWrite(RELEY_2_PIN, HIGH);  //namotka
+      }
+    if (cycle == 3) {
+      digitalWrite(RELEY_1_PIN, LOW);   // low
+      }
+    if (cycle == 5) {
+      digitalWrite(RELEY_1_PIN, HIGH);
+      }
+
+    if (cycle == 6) {
+      digitalWrite(RELEY_2_PIN, HIGH);
+      }
+
+    if (cycle == 8) {
+      digitalWrite(RELEY_2_PIN, LOW);   //razmotka
+      }
+    if (cycle == 9) {
+      digitalWrite(RELEY_1_PIN, LOW);// low
+      }
+    if (cycle == 11) {
+      digitalWrite(RELEY_1_PIN, HIGH);
+      }
+
+    if (cycle >= 12) {
+      digitalWrite(RELEY_2_PIN, HIGH);
+      }
+
+    if (cycle >= 20) {
+      cycle = 0;
+      }
+
+
+
 
     // Pulse frequency (Hz) = 7.5Q, Q is flow rate in L/min.
     L_minute_1 = (flow_1_frequency / 7.5); // (Pulse frequency) / 7.5Q = flowrate in L/minute
